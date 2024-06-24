@@ -1,4 +1,4 @@
-'''相对的改进
+```相对的改进
 #---------------------------(predict.ipynb)------------------------#
     if mode == "predict":
         image = Image.open('4.jpg')#先自动对目录下的4.jpg文件实施基线预测
@@ -80,4 +80,4 @@ if __name__ == "__main__": #精简参数行，去除多余注释
     save_dir            = 'logs'
     eval_flag           = True
     eval_period         = 10
-    num_workers         = 4'''
+    num_workers         = 4```
