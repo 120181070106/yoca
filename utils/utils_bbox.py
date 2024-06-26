@@ -49,10 +49,10 @@ class DecodeBox():
     def decode_box(self, inputs):
         # dbox  batch_size, 4, 8400
         # cls   batch_size, 20, 8400
-        dbox, cls, origin_cls, anchors, strides = inputs
+        dbox, cls, origin_cls, anchors, strides,dis,ang = inputs
         # 获得中心宽高坐标
         dbox    = dist2bbox(dbox, anchors.unsqueeze(0), xywh=True, dim=1) * strides
-        y       = torch.cat((dbox, cls.sigmoid()), 1).permute(0, 2, 1)
+        y       = torch.cat((dbox, cls.sigmoid(),dis,ang), 1).permute(0, 2, 1)
         # 进行归一化，到0~1之间
         y[:, :, :4] = y[:, :, :4] / torch.Tensor([self.input_shape[1], self.input_shape[0], self.input_shape[1], self.input_shape[0]]).to(y.device)
         return y
@@ -83,7 +83,45 @@ class DecodeBox():
         boxes  = np.concatenate([box_mins[..., 0:1], box_mins[..., 1:2], box_maxes[..., 0:1], box_maxes[..., 1:2]], axis=-1)
         boxes *= np.concatenate([image_shape, image_shape], axis=-1)
         return boxes
-
+    def 相交相似(self,当框,另框):#适当放大两框，让相近但不相交的两框相交  连着插入
+        当框加宽=当框[0]+1.5*(当框[2]-当框[0])#实为：当框[2]
+        当框加高=当框[1]+1.5*(当框[3]-当框[1])#实为：当框[3]
+        另框加宽=另框[0]+1.5*(另框[2]-另框[0])#实为：另框[2]
+        另框加高=另框[1]+1.5*(另框[3]-另框[1])#实为：另框[3]
+        交横 = max(0,(min(当框加宽,另框加宽)-max(当框[0],另框[0])))
+        交纵 = max(0,(min(当框加高,另框加高)-max(当框[1],另框[1])))
+        宽率 = (当框[2]-当框[0])/(另框[2]-另框[0])
+        高率 = (当框[3]-当框[1])/(另框[3]-另框[1])
+        return 交横*交纵 > 0 and max(宽率,高率)<2.5 and min(宽率,高率)>0.4
+    def 信度调整(self,框集):#(nb,4) 过分接近了也不好，尺寸夸张了泛滥目标与谁都有染
+        关系框号集,独立框号集,似然框号集=[],[],[] # 添加符合角度规律提示 ↓
+        框集 = torch.cat((框集,torch.zeros(框集.shape[0],1).to(框集.device)),dim=1)
+        for i in range(框集.shape[0]):
+            当框 = 框集[i]; d=当框[4]; 当框[4]=d/2; 关否=0
+            for j in range(框集.shape[0]):
+                if j==i: continue
+                另框 = 框集[j]; l=torch.tensor(1)
+                if self.相交相似(当框,另框):
+                    x=另框[0]+另框[2]-当框[0]-当框[2]; y=另框[1]+另框[3]-当框[1]-当框[3]
+                    # 旋号=((torch.atan2(l,x/y)*180/3.14+11.25)/22.5).long()
+                    旋角=torch.atan2(l,x/y)*180/3.14#允许目标与预测相差在1内(原0.2)
+                    当预=当框[6]*22.5+11.25; 另预=另框[6]*22.5+11.25
+                    if 旋角>157.5 or 旋角<22.5:#注意到两极互联，有则取大极归负连小极
+                        if 旋角>157.5: 旋角=旋角-180
+                        if 当预>90: 当预=当预-180
+                        if 另预>90: 另预=另预-180
+                    服当=torch.abs(旋角-当预)<22.5; 服另=torch.abs(旋角-另预)<22.5
+                    if 服当 or 服另:
+                    # if 旋号==当框[6] or 旋号==另框[6]:#提当框信度,不能提前走就减
+                        当框[4]=torch.min(torch.max(3*d,2*d+0.2*l),0.8*l)
+                        关系框号集.append(i); 关否=1; 框集[i,-1]=1; break
+            if 关否==0: 独立框号集.append(i)
+        for i in 独立框号集:
+            for j in 关系框号集:
+                if self.相交相似(框集[i],框集[j]):
+                    框集[i,4] *= 2; break
+        return 框集# [x1, y1, x2, y2, confidence, class, rotation]
+    
     def non_max_suppression(self, prediction, num_classes, input_shape, image_shape, letterbox_image, conf_thres=0.5, nms_thres=0.4):
         #----------------------------------------------------------#
         #   将预测结果的格式转换成左上角右下角的格式。
@@ -104,6 +142,7 @@ class DecodeBox():
             #   class_pred  [num_anchors, 1]    种类
             #----------------------------------------------------------#
             class_conf, class_pred = torch.max(image_pred[:, 4:4 + num_classes], 1, keepdim=True)
+            ang_conf = torch.argmax(image_pred[:, -8:], 1, keepdim=True)
 
             #----------------------------------------------------------#
             #   利用置信度进行第一轮筛选
@@ -116,13 +155,15 @@ class DecodeBox():
             image_pred = image_pred[conf_mask]
             class_conf = class_conf[conf_mask]
             class_pred = class_pred[conf_mask]
+            ang_conf = ang_conf[conf_mask]
             if not image_pred.size(0):
                 continue
             #-------------------------------------------------------------------------#
             #   detections  [num_anchors, 6]
             #   6的内容为：x1, y1, x2, y2, class_conf, class_pred
             #-------------------------------------------------------------------------#
-            detections = torch.cat((image_pred[:, :4], class_conf.float(), class_pred.float()), 1)
+            detections = torch.cat((image_pred[:, :4], class_conf.float(), class_pred.float(),ang_conf.float()), 1)
+            
 
             #------------------------------------------#
             #   获得预测结果中包含的所有种类
@@ -133,11 +174,13 @@ class DecodeBox():
                 unique_labels = unique_labels.cuda()
                 detections = detections.cuda()
 
-            for c in unique_labels:
-                #------------------------------------------#
-                #   获得某一类得分筛选后全部的预测结果
-                #------------------------------------------#
-                detections_class = detections[detections[:, -1] == c]
+            # for c in unique_labels:
+            #     #------------------------------------------#
+            #     #   获得某一类得分筛选后全部的预测结果
+            #     #------------------------------------------#
+            #     detections_class = detections[detections[:, -1] == c]
+            for c in [1]:
+                detections_class = detections
                 #------------------------------------------#
                 #   使用官方自带的非极大抑制会速度更快一些！
                 #   筛选出一定区域内，属于同一种类得分最大的框
@@ -148,7 +191,7 @@ class DecodeBox():
                     nms_thres
                 )
                 max_detections = detections_class[keep]
-                
+                max_detections = self.信度调整(max_detections)
                 # # 按照存在物体的置信度排序
                 # _, conf_sort_index = torch.sort(detections_class[:, 4]*detections_class[:, 5], descending=True)
                 # detections_class = detections_class[conf_sort_index]
