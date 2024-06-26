@@ -25,7 +25,7 @@ class YOLO(object):
         #   验证集损失较低不代表mAP较高，仅代表该权值在验证集上泛化性能较好。
         #   如果出现shape不匹配，同时要注意训练时的model_path和classes_path参数的修改
         #--------------------------------------------------------------------------#
-        "model_path"        : '检头.pth',
+        "model_path"        : 'model_data/b基础633.pth',
         "classes_path"      : 'model_data/voc_classes.txt',
         #---------------------------------------------------------------------#
         #   输入图片的大小，必须为32的倍数。
@@ -153,8 +153,6 @@ class YOLO(object):
                 return image
 
             top_label   = np.array(results[0][:, 5], dtype = 'int32')
-            aug_conf   = np.array(results[0][:, 6], dtype = 'int32')
-            hit_mask   = np.array(results[0][:, -1])
             top_conf    = results[0][:, 4]
             top_boxes   = results[0][:, :4]
         #---------------------------------------------------------#
@@ -198,8 +196,7 @@ class YOLO(object):
             predicted_class = self.class_names[int(c)]
             box             = top_boxes[i]
             score           = top_conf[i]
-            aug             = aug_conf[i]
-            hit             = hit_mask[i]
+
             top, left, bottom, right = box
 
             top     = max(0, np.floor(top).astype('int32'))
@@ -208,8 +205,6 @@ class YOLO(object):
             right   = min(image.size[0], np.floor(right).astype('int32'))
 
             label = '{} {:.2f}'.format(predicted_class, score)
-            if hit==0:label = '{:.1f} {}'.format((score*10), aug)
-            else:label = '{:.1f} {} *'.format((score*10), aug)
             draw = ImageDraw.Draw(image)
             label_size = draw.textsize(label, font)
             label = label.encode('utf-8')
