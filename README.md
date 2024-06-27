@@ -80,4 +80,7 @@ if __name__ == "__main__": #精简参数行，去除多余注释
     save_dir            = 'logs'
     eval_flag           = True
     eval_period         = 10
-    num_workers         = 4```
+    num_workers         = 4
+#---------------------------(voc_annotation.py)------------------------#
+annotation_mode     = 2 #基本的集合已被划分于ImageSeg文件夹，现只需生成2007_train.txt、2007_val.txt的目标信息即可（原为0）
+```
