@@ -83,4 +83,8 @@ if __name__ == "__main__": #精简参数行，去除多余注释
     num_workers         = 4
 #---------------------------(voc_annotation.py)------------------------#
 annotation_mode     = 2 #基本的集合已被划分于ImageSeg文件夹，现只需生成2007_train.txt、2007_val.txt的目标信息即可（原为0）
+#-----------------------------------(utils_map.py)------------------------------#
+# 第241和第609行，均加入".manager"变为fig.canvas.manager.set_window_title
+    fig.canvas.manager.set_window_title(window_title)#第241行
+                fig.canvas.manager.set_window_title('AP ' + class_name)#609行
 ```
