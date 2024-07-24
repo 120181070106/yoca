@@ -87,4 +87,7 @@ annotation_mode     = 2 #基本的集合已被划分于ImageSeg文件夹，现�
 # 第241和第609行，均加入".manager"变为fig.canvas.manager.set_window_title
     fig.canvas.manager.set_window_title(window_title)#第241行
                 fig.canvas.manager.set_window_title('AP ' + class_name)#609行
+
+#--------------------(gradcam.ipynb)--------------#
+        #生成图片（默认是voc文件夹中的4.jpg）经网络某显著层时的梯度热力图于result.png
 ```
